@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Surgical Eye Tracking HUD (Stable Load)</title>
+    <title>Surgical Eye Tracking HUD (Camera Fix)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: sans-serif; touch-action: none; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
@@ -44,7 +44,6 @@
         function onOpenCvReady() {
             console.log("OpenCV.js Ready!");
             isCvReady = true;
-            // 이미 하단 스크립트가 로드되었다면 카메라 시작
             if (typeof startStandardCamera === "function") {
                 startStandardCamera();
             }
@@ -120,12 +119,18 @@
         let lastMidpointX = null;
         let lastMidpointY = null;
 
-        // 라이브러리가 이미 로드되었을 경우를 대비해 체크
+        // ★ 중복 실행 방지용 잠금장치 추가
+        let isCameraStarted = false;
+
         window.onload = () => {
             if (isCvReady) startStandardCamera();
         };
 
         async function startStandardCamera() {
+            // ★ 이미 실행 중이면 바로 종료하여 권한 두 번 묻기 방지
+            if (isCameraStarted) return; 
+            isCameraStarted = true;
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, focusMode: 'continuous' }
@@ -147,6 +152,8 @@
                     requestAnimationFrame(processVideo);
                 };
             } catch (err) {
+                // 권한 거부 시 다시 시도할 수 있도록 잠금 해제
+                isCameraStarted = false; 
                 loading.innerText = "카메라 권한을 허용해주세요.";
             }
         }
@@ -340,6 +347,13 @@
                 tempCanvas.width = canvasElement.width; tempCanvas.height = canvasElement.height;
                 cv.imshow(tempCanvas, markingSnapshot);
                 canvasCtx.drawImage(tempCanvas, 0, 0);
+                if (markingStep === 2 && corneaRect) {
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(corneaRect.x + corneaTrackingRadius, corneaRect.y + corneaTrackingRadius, corneaTrackingRadius, 0, 2 * Math.PI);
+                    canvasCtx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+                    canvasCtx.lineWidth = 2;
+                    canvasCtx.stroke();
+                }
             } else {
                 canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
             }
