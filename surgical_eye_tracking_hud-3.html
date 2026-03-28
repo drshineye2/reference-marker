@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Surgical Eye Tracking HUD (Camera Fix)</title>
+    <title>Surgical Eye Tracking HUD (Compact UI)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: sans-serif; touch-action: none; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
@@ -11,42 +11,39 @@
         video { display: none; } 
         canvas { transform: scaleX(1); } 
         
+        /* 초소형 한 줄 UI 바 (우측 하단) */
         #ui-panel { 
-            position: absolute; bottom: 15px; right: 15px; z-index: 10; 
-            background: rgba(0, 0, 0, 0.75); padding: 15px; border-radius: 12px; 
-            border: 1px solid #555; width: 260px; box-sizing: border-box;
+            position: absolute; bottom: 20px; right: 20px; z-index: 10; 
+            background: rgba(0, 0, 0, 0.6); padding: 8px 15px; border-radius: 30px; 
+            border: 1px solid #444; display: flex; align-items: center; gap: 10px;
+            backdrop-filter: blur(4px); /* 반투명 블러 효과 */
         }
         
-        .setting-group { margin-bottom: 12px; }
-        label { font-size: 14px; font-weight: bold; color: #00FFFF; display: block; margin-bottom: 5px; }
-        input[type=number] { width: 75px; padding: 8px; font-size: 16px; text-align: center; background: #222; color: #fff; border: 1px solid #666; border-radius: 6px; }
+        label { font-size: 13px; font-weight: bold; color: #00FFFF; margin: 0; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+        input[type=number] { width: 45px; padding: 4px; font-size: 14px; text-align: center; background: #222; color: #fff; border: 1px solid #666; border-radius: 4px; }
 
-        .button-group { display: flex; flex-direction: column; gap: 8px; margin-top: 5px; }
         .action-btn { 
-            width: 100%; padding: 12px; color: white; border: 1px solid #555; 
+            padding: 6px 12px; color: white; border: 1px solid #555; 
             border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
-            transition: background 0.2s;
+            background-color: #007bff; border-color: #0056b3; white-space: nowrap;
         }
-        .action-btn { background-color: #007bff; border-color: #0056b3; }
         .action-btn:active { background-color: #0056b3; }
+        #btnCaptureSnapshot { background-color: #444; border-color: #333; }
 
-        .instruction { font-size: 11px; color: #aaa; margin-top: 10px; display: block; line-height: 1.4; }
-        
+        /* 제작자 텍스트 한 줄 통합 */
+        .creator-credit { font-size: 11px; color: #aaa; white-space: nowrap; font-weight: normal; margin-left: 5px;}
+
         #marker { display: none; position: absolute; border: 4px dashed #00FFFF; border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); box-sizing: border-box;}
         #marker::before { content: attr(data-label); position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px black; white-space: nowrap; }
 
-        .creator-credit { font-size: 10px; color: #888; margin-top: 12px; text-align: center; border-top: 1px solid #444; padding-top: 8px; }
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20; font-size: 16px; font-weight: bold; color: #FFFF00; background: rgba(0,0,0,0.8); padding: 15px 20px; border-radius: 8px; text-align: center;}
     </style>
 
     <script type="text/javascript">
         var isCvReady = false;
         function onOpenCvReady() {
-            console.log("OpenCV.js Ready!");
             isCvReady = true;
-            if (typeof startStandardCamera === "function") {
-                startStandardCamera();
-            }
+            if (typeof startStandardCamera === "function") startStandardCamera();
         }
     </script>
     <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
@@ -56,25 +53,10 @@
     <div id="loading">OpenCV 로딩 및 카메라 켜는 중...</div>
 
     <div id="ui-panel">
-        <div class="setting-group">
-            <label>목표 축(도): <input type="number" id="targetAngle" value="90" min="0" max="180"></label>
-        </div>
-        
-        <div class="setting-group">
-            <label id="statusLabel">수동 영점 (2단계 마킹)</label>
-            <div class="button-group">
-                <button class="action-btn" id="btnCaptureSnapshot" style="background-color: #444; border-color: #333;">마킹 스냅샷 찍기</button>
-                <button class="action-btn" id="btnAction" style="display: none;">각막 완료 (다음: 동공)</button>
-            </div>
-        </div>
-
-        <span class="instruction">
-            1. [준비] 2손가락: 렌즈 광학 줌<br>
-            2. [각막] 트래킹 기준 영역 설정<br>
-            3. [동공] 각도기 중심 영역 설정
-        </span>
-
-        <div class="creator-credit">제작자 대전이안과병원 신일환</div>
+        <label>축(°): <input type="number" id="targetAngle" value="90" min="0" max="180"></label>
+        <button class="action-btn" id="btnCaptureSnapshot">스냅샷</button>
+        <button class="action-btn" id="btnAction" style="display: none; background-color: #28a745; border-color: #1e7e34;">각막 완료</button>
+        <div class="creator-credit">대전이안과병원 신일환</div>
     </div>
 
     <div id="container">
@@ -93,7 +75,6 @@
         const angleInput = document.getElementById('targetAngle');
         const btnCaptureSnapshot = document.getElementById('btnCaptureSnapshot');
         const btnAction = document.getElementById('btnAction');
-        const statusLabel = document.getElementById('statusLabel');
 
         let markingSnapshot = null;
         let limbusTemplate = null; 
@@ -110,6 +91,7 @@
         let cameraCapabilities = null;
         let currentHardwareZoom = 1.0;
         let initialHardwareZoom = 1.0;
+        let snapshotHardwareZoom = 1.0; 
 
         let isDragging = false;
         let lastTouchX = null;
@@ -119,7 +101,6 @@
         let lastMidpointX = null;
         let lastMidpointY = null;
 
-        // ★ 중복 실행 방지용 잠금장치 추가
         let isCameraStarted = false;
 
         window.onload = () => {
@@ -127,7 +108,6 @@
         };
 
         async function startStandardCamera() {
-            // ★ 이미 실행 중이면 바로 종료하여 권한 두 번 묻기 방지
             if (isCameraStarted) return; 
             isCameraStarted = true;
 
@@ -152,7 +132,6 @@
                     requestAnimationFrame(processVideo);
                 };
             } catch (err) {
-                // 권한 거부 시 다시 시도할 수 있도록 잠금 해제
                 isCameraStarted = false; 
                 loading.innerText = "카메라 권한을 허용해주세요.";
             }
@@ -160,17 +139,19 @@
 
         btnCaptureSnapshot.addEventListener('click', () => {
             if (markingStep !== 0) {
+                // 초기화 로직
                 markingStep = 0;
                 if (markingSnapshot) { markingSnapshot.delete(); markingSnapshot = null; }
                 if (limbusTemplate) { limbusTemplate.delete(); limbusTemplate = null; }
                 trackedCenter = null;
-                btnCaptureSnapshot.textContent = "마킹 스냅샷 찍기";
-                statusLabel.textContent = "수동 영점 (2단계 마킹)";
+                btnCaptureSnapshot.textContent = "스냅샷";
                 btnAction.style.display = 'none';
                 marker.style.display = 'none';
                 return; 
             }
             if (videoElement.videoWidth === 0) return;
+            
+            snapshotHardwareZoom = currentHardwareZoom;
             const width = videoElement.videoWidth;
             const height = videoElement.videoHeight;
             const tempCanvas = document.createElement('canvas');
@@ -178,17 +159,19 @@
             tempCanvas.getContext('2d').drawImage(videoElement, 0, 0, width, height);
             const imgData = tempCanvas.getContext('2d').getImageData(0, 0, width, height);
             markingSnapshot = cv.matFromImageData(imgData);
+            
             markingStep = 1;
-            statusLabel.textContent = "1/2. 각막(추적) 영역 설정";
-            btnCaptureSnapshot.textContent = "초기화 (라이브 복귀)";
+            btnCaptureSnapshot.textContent = "초기화";
+            
             marker.style.display = 'block';
             marker.style.borderColor = '#00FFFF';
-            marker.setAttribute('data-label', '각막(Limbus) 설정');
+            marker.setAttribute('data-label', '각막(추적)');
             marker.style.color = '#00FFFF';
             const initialDiameter = 200;
             markerRect = { x: (width - initialDiameter) / 2, y: (height - initialDiameter) / 2, width: initialDiameter, height: initialDiameter };
             updateMarkerUI();
-            btnAction.textContent = "각막 완료 (다음: 동공)";
+            
+            btnAction.textContent = "각막 완료";
             btnAction.style.display = 'block';
         });
 
@@ -197,16 +180,18 @@
                 corneaRect = { ...markerRect };
                 corneaTrackingRadius = corneaRect.width / 2;
                 markingStep = 2;
-                statusLabel.textContent = "2/2. 동공(중심) 영역 설정";
+                
                 const pD = 80;
                 markerRect.width = markerRect.height = pD;
                 markerRect.x = corneaRect.x + corneaRect.width/2 - pD/2;
                 markerRect.y = corneaRect.y + corneaRect.height/2 - pD/2;
+                
                 marker.style.borderColor = '#FF00FF';
-                marker.setAttribute('data-label', '동공(Pupil) 중심 설정');
+                marker.setAttribute('data-label', '동공(중심)');
                 marker.style.color = '#FF00FF';
                 updateMarkerUI();
-                btnAction.textContent = "동공 완료 (트래킹 시작)";
+                
+                btnAction.textContent = "동공 완료";
             } else if (markingStep === 2) {
                 pupilRect = { ...markerRect };
                 pupilTrackingRadius = pupilRect.width / 2;
@@ -216,16 +201,20 @@
                 const pCy = pupilRect.y + pupilRect.height / 2;
                 centerOffset.dx = pCx - cCx;
                 centerOffset.dy = pCy - cCy;
+                
                 let roiX = Math.floor(Math.max(0, corneaRect.x)), roiY = Math.floor(Math.max(0, corneaRect.y));
                 let roiW = Math.floor(Math.min(markingSnapshot.cols - roiX, corneaRect.width));
                 let roiH = Math.floor(Math.min(markingSnapshot.rows - roiY, corneaRect.height));
+                
+                if (roiW < 10 || roiH < 10) { alert("영역이 너무 작습니다."); return; }
+
                 let rect = new cv.Rect(roiX, roiY, roiW, roiH);
                 let templateRgba = markingSnapshot.roi(rect);
                 limbusTemplate = new cv.Mat();
                 cv.cvtColor(templateRgba, limbusTemplate, cv.COLOR_RGBA2GRAY, 0);
                 templateRgba.delete(); 
+                
                 markingStep = 3;
-                statusLabel.textContent = "트래킹 중...";
                 btnAction.style.display = 'none';
                 marker.style.display = 'none';
             }
@@ -236,7 +225,8 @@
             const canvasRect = canvasElement.getBoundingClientRect();
             const scaleX = videoElement.videoWidth / canvasRect.width;
             const scaleY = videoElement.videoHeight / canvasRect.height;
-            if (markingStep === 0) {
+            
+            if (markingStep === 0 || markingStep === 3) {
                 if (e.type === 'touchstart' && e.touches && e.touches.length === 2) {
                     const t1 = e.touches[0], t2 = e.touches[1];
                     initialPinchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -248,9 +238,12 @@
                         let nZ = Math.max(cameraCapabilities.zoom.min, Math.min(initialHardwareZoom * (dist/initialPinchDistance), cameraCapabilities.zoom.max));
                         videoTrack.applyConstraints({ advanced: [{ zoom: nZ }] }).then(() => { currentHardwareZoom = nZ; });
                     }
-                } else if (e.type === 'touchend') initialPinchDistance = null;
+                } else if (e.type === 'touchend' || e.type === 'touchcancel') {
+                    initialPinchDistance = null;
+                }
                 return;
             }
+
             if (markingStep === 1 || markingStep === 2) {
                 if (e.type === 'touchstart' || e.type === 'mousedown') {
                     if (e.touches && e.touches.length === 2) {
@@ -324,24 +317,45 @@
             }
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
             if (markingStep === 3 && limbusTemplate != null) {
                 canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
                 const imgData = canvasCtx.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                let src = null, srcGray = null, dst = null, mask = null; 
+                let src = null, srcGray = null, dst = null, mask = null, activeTemplate = null; 
                 try {
                     src = cv.matFromImageData(imgData);
                     srcGray = new cv.Mat();
                     cv.cvtColor(src, srcGray, cv.COLOR_RGBA2GRAY, 0);
-                    if (srcGray.cols >= limbusTemplate.cols && srcGray.rows >= limbusTemplate.rows) {
+                    
+                    let zoomScale = currentHardwareZoom / snapshotHardwareZoom;
+                    let scaledW = Math.max(10, Math.round(limbusTemplate.cols * zoomScale));
+                    let scaledH = Math.max(10, Math.round(limbusTemplate.rows * zoomScale));
+                    
+                    if (scaledW < srcGray.cols && scaledH < srcGray.rows) {
+                        activeTemplate = new cv.Mat();
+                        if (zoomScale !== 1.0) {
+                            cv.resize(limbusTemplate, activeTemplate, new cv.Size(scaledW, scaledH), 0, 0, cv.INTER_LINEAR);
+                        } else {
+                            limbusTemplate.copyTo(activeTemplate);
+                        }
+
                         dst = new cv.Mat(); mask = new cv.Mat(); 
-                        cv.matchTemplate(srcGray, limbusTemplate, dst, cv.TM_CCORR_NORMED, mask);
+                        cv.matchTemplate(srcGray, activeTemplate, dst, cv.TM_CCORR_NORMED, mask);
                         let result = cv.minMaxLoc(dst);
-                        if (result.maxVal > 0.82) {
-                            trackedCenter = new cv.Point(result.maxLoc.x + corneaTrackingRadius, result.maxLoc.y + corneaTrackingRadius);
+                        
+                        if (result.maxVal > 0.75) {
+                            let currentCorneaRadius = corneaTrackingRadius * zoomScale;
+                            trackedCenter = new cv.Point(result.maxLoc.x + currentCorneaRadius, result.maxLoc.y + currentCorneaRadius);
                         }
                     }
-                } catch (err) { markingStep = 0; }
-                finally { if (src) src.delete(); if (srcGray) srcGray.delete(); if (dst) dst.delete(); if (mask) mask.delete(); }
+                } catch (err) { 
+                    markingStep = 0; console.error(err);
+                }
+                finally { 
+                    if (src) src.delete(); if (srcGray) srcGray.delete(); 
+                    if (dst) dst.delete(); if (mask) mask.delete(); 
+                    if (activeTemplate) activeTemplate.delete();
+                }
             } else if ((markingStep === 1 || markingStep === 2) && markingSnapshot) {
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = canvasElement.width; tempCanvas.height = canvasElement.height;
@@ -357,22 +371,35 @@
             } else {
                 canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
             }
+
             if (markingStep === 3 && trackedCenter) {
+                let zoomScale = currentHardwareZoom / snapshotHardwareZoom;
+                let currentCorneaRadius = corneaTrackingRadius * zoomScale;
+                let currentPupilRadius = pupilTrackingRadius * zoomScale;
+                let currentOffsetX = centerOffset.dx * zoomScale;
+                let currentOffsetY = centerOffset.dy * zoomScale;
+
                 const cCx = trackedCenter.x, cCy = trackedCenter.y;
-                const pCx = cCx + centerOffset.dx, pCy = cCy + centerOffset.dy;
+                const pCx = cCx + currentOffsetX, pCy = cCy + currentOffsetY;
+                
                 canvasCtx.beginPath();
-                canvasCtx.arc(cCx, cCy, corneaTrackingRadius, 0, 2 * Math.PI);
+                canvasCtx.arc(cCx, cCy, currentCorneaRadius, 0, 2 * Math.PI);
                 canvasCtx.strokeStyle = '#00FF00'; canvasCtx.lineWidth = 2; canvasCtx.stroke();
+                
                 canvasCtx.beginPath();
-                canvasCtx.arc(pCx, pCy, pupilTrackingRadius, 0, 2 * Math.PI);
+                canvasCtx.arc(pCx, pCy, currentPupilRadius, 0, 2 * Math.PI);
                 canvasCtx.strokeStyle = '#FF00FF'; canvasCtx.lineWidth = 2; canvasCtx.stroke();
+                
                 canvasCtx.beginPath();
                 canvasCtx.arc(pCx, pCy, 3, 0, 2 * Math.PI);
                 canvasCtx.fillStyle = '#FF0000'; canvasCtx.fill();
-                const len = corneaTrackingRadius + 150;
+                
+                const len = currentCorneaRadius + (150 * zoomScale);
+                
                 canvasCtx.beginPath();
                 canvasCtx.moveTo(pCx - len, pCy); canvasCtx.lineTo(pCx + len, pCy);
                 canvasCtx.strokeStyle = '#00FFFF'; canvasCtx.lineWidth = 2; canvasCtx.stroke();
+                
                 const rad = -parseFloat(angleInput.value || 0) * (Math.PI / 180); 
                 canvasCtx.beginPath(); canvasCtx.setLineDash([12, 8]);
                 canvasCtx.moveTo(pCx - len * Math.cos(rad), pCy - len * Math.sin(rad));
