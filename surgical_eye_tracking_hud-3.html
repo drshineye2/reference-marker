@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Surgical Eye Tracking HUD (Kappa Angle Corrected)</title>
+    <title>Surgical Eye Tracking HUD (Stabilized Version)</title>
     <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: sans-serif; touch-action: none; }
@@ -12,10 +12,11 @@
         video { display: none; } 
         canvas { transform: scaleX(1); } 
         
+        /* UI 패널 위치 변경: 우측 하단 */
         #ui-panel { 
-            position: absolute; top: 10px; left: 10px; z-index: 10; 
-            background: rgba(0, 0, 0, 0.7); padding: 15px; border-radius: 8px; 
-            border: 1px solid #444; width: 260px; box-sizing: border-box;
+            position: absolute; bottom: 10px; right: 10px; z-index: 10; 
+            background: rgba(0, 0, 0, 0.75); padding: 15px; border-radius: 8px; 
+            border: 1px solid #555; width: 260px; box-sizing: border-box;
         }
         
         .setting-group { margin-bottom: 12px; }
@@ -36,6 +37,11 @@
         /* 마커 디자인 */
         #marker { display: none; position: absolute; border: 4px dashed #00FFFF; border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); box-sizing: border-box;}
         #marker::before { content: attr(data-label); position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px black; white-space: nowrap; }
+
+        /* 제작자 표시 스타일 */
+        .creator-credit {
+            font-size: 10px; color: #888; margin-top: 12px; text-align: center; border-top: 1px solid #444; padding-top: 8px;
+        }
 
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20; font-size: 16px; font-weight: bold; color: #FFFF00; background: rgba(0,0,0,0.8); padding: 15px 20px; border-radius: 8px; text-align: center;}
     </style>
@@ -58,14 +64,16 @@
         </div>
 
         <span class="instruction">
-            1. [각막] 범위를 지정하여 트래킹 기준을 잡습니다.<br>
-            2. [동공] 범위를 지정하여 각도기(HUD) 중심을 잡습니다.<br>
-            (1/2손가락 터치 드래그 & 줌 지원)
+            1. [준비] 2손가락: 렌즈 광학 줌<br>
+            2. [각막] 범위를 지정하여 트래킹 기준 설정<br>
+            3. [동공] 범위를 지정하여 각도기 중심 설정
         </span>
+
+        <div class="creator-credit">제작자 대전이안과병원 신일환</div>
     </div>
 
     <div id="container">
-        <video id="video" autoplay playsinline></video>
+        <video id="video" autoplay playsinline muted></video>
         <canvas id="canvas"></canvas>
         <div id="marker"></div>
     </div>
@@ -123,20 +131,27 @@
 
         async function startStandardCamera() {
             try {
+                // 초점을 자동으로 맞추는 continuous focus 설정 추가
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, focusMode: 'continuous' }
                 });
+                
                 videoElement.srcObject = stream;
+                
+                // 광학 줌 제어를 위해 카메라 트랙 객체 가져오기
                 videoTrack = stream.getVideoTracks()[0];
                 
                 videoElement.onloadedmetadata = () => {
                     videoElement.play();
                     loading.style.display = 'none';
                     
+                    // 비디오가 로드된 후 스마트폰 카메라가 광학 줌을 지원하는지 확인
                     setTimeout(() => {
                         cameraCapabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : null;
                         if (cameraCapabilities && cameraCapabilities.zoom) {
                             currentHardwareZoom = videoTrack.getSettings().zoom || cameraCapabilities.zoom.min;
+                        } else {
+                            console.warn("이 기기/브라우저는 웹에서 광학 줌을 지원하지 않습니다.");
                         }
                     }, 500);
 
@@ -147,7 +162,7 @@
             }
         }
 
-        // 초기화 버튼 동작 (스냅샷 찍기 & 리셋)
+        // 스냅샷 찍기 버튼 (리셋)
         btnCaptureSnapshot.addEventListener('click', () => {
             if (markingStep !== 0) {
                 // 초기화 (라이브 복귀)
@@ -169,6 +184,8 @@
             const height = videoElement.videoHeight;
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = width; tempCanvas.height = height;
+            
+            // 광학 줌은 렌즈 자체에서 이미 확대된 영상을 브라우저로 쏴주기 때문에, 원본 그대로 복사
             tempCanvas.getContext('2d').drawImage(videoElement, 0, 0, width, height);
             
             const imgData = tempCanvas.getContext('2d').getImageData(0, 0, width, height);
@@ -260,7 +277,7 @@
             }
         });
 
-        // ---------------- 동시 이동(Pan) & 크기 조절(Zoom) 로직 ----------------
+        // ---------------- 동시 이동(Pan) & 크기 조절(Zoom) ----------------
         function handleInteraction(e) {
             e.preventDefault(); 
             
@@ -299,6 +316,7 @@
             if (markingStep === 1 || markingStep === 2) {
                 if (e.type === 'touchstart' || e.type === 'mousedown') {
                     if (e.touches && e.touches.length === 2) {
+                        // 2손가락 터치 시작: 줌 기준거리 및 2손가락 중심점 기록
                         isDragging = false;
                         const touch1 = e.touches[0];
                         const touch2 = e.touches[1];
@@ -307,6 +325,7 @@
                         lastMidpointX = (touch1.clientX + touch2.clientX) / 2;
                         lastMidpointY = (touch1.clientY + touch2.clientY) / 2;
                     } else if ((e.touches && e.touches.length === 1) || !e.touches) {
+                        // 1손가락 터치 시작
                         isDragging = true;
                         initialPinchDistance = null;
                         lastMidpointX = null;
@@ -317,6 +336,7 @@
                 } 
                 else if (e.type === 'touchmove' || e.type === 'mousemove') {
                     if (e.touches && e.touches.length === 2) {
+                        // 2손가락 이동: 크기 조절(Zoom)과 동시 이동(Pan) 처리
                         isDragging = false;
                         const touch1 = e.touches[0];
                         const touch2 = e.touches[1];
@@ -328,7 +348,7 @@
                         if (initialPinchDistance && lastMidpointX !== null && lastMidpointY !== null) {
                             const scale = currentDist / initialPinchDistance;
                             let newWidth = initialMarkerWidth * scale;
-                            newWidth = Math.max(20, Math.min(newWidth, 600)); // 동공을 위해 최소 크기 20px로 완화
+                            newWidth = Math.max(20, Math.min(newWidth, 600)); 
                             
                             const dx = (currentMidX - lastMidpointX) * scaleX;
                             const dy = (currentMidY - lastMidpointY) * scaleY;
@@ -346,6 +366,7 @@
                         lastMidpointY = currentMidY;
                         
                     } else if (((e.touches && e.touches.length === 1) || (!e.touches && e.buttons === 1)) && isDragging) {
+                        // 1손가락 이동
                         const currentX = e.touches ? e.touches[0].clientX : e.clientX;
                         const currentY = e.touches ? e.touches[0].clientY : e.clientY;
                         
@@ -406,7 +427,7 @@
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, width, height);
             
-            // 3단계: 트래킹 상태
+            // 3단계: 트래킹 상태 (최적화된 안정 버전)
             if (markingStep === 3 && limbusTemplate != null) {
                 canvasCtx.drawImage(videoElement, 0, 0, width, height);
                 const imgData = canvasCtx.getImageData(0, 0, width, height);
@@ -422,12 +443,12 @@
                         dst = new cv.Mat();
                         mask = new cv.Mat(); 
                         
-                        // OpenCV: 각막 템플릿 매칭 수행
+                        // OpenCV: 템플릿 매칭 수행 (스케일 조정 없는 가장 빠른 단일 매칭)
                         cv.matchTemplate(srcGray, limbusTemplate, dst, cv.TM_CCORR_NORMED, mask);
                         let result = cv.minMaxLoc(dst);
                         
+                        // 눈 깜빡임 시 원이 튀는 현상 방지 임계값 (0.82)
                         if (result.maxVal > 0.82) {
-                            // 각막 중심점 갱신
                             trackedCenter = new cv.Point(
                                 result.maxLoc.x + corneaTrackingRadius,
                                 result.maxLoc.y + corneaTrackingRadius
@@ -494,7 +515,7 @@
                 canvasCtx.lineWidth = 2;
                 canvasCtx.stroke();
 
-                // 동공 중심점 마커 (빨간 점)
+                // 동공 중심점 마커
                 canvasCtx.beginPath();
                 canvasCtx.arc(pupilCx, pupilCy, 3, 0, 2 * Math.PI);
                 canvasCtx.fillStyle = '#FF0000';
@@ -513,6 +534,7 @@
 
                 // 목표 난시 축 선 (노란색 점선)
                 const userAngle = parseFloat(angleInput.value) || 0;
+                // HTML Canvas는 Y축이 아래로 향하므로 수술 각도(반시계)를 위해 -를 붙임
                 const angleRad = -userAngle * (Math.PI / 180); 
                 
                 const endX1 = pupilCx + lineLength * Math.cos(angleRad);
