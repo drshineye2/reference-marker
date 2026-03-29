@@ -3,35 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Surgical Eye Tracking HUD (Compact UI)</title>
+    <title>Surgical Eye Tracking HUD (PC Screen Capture)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: sans-serif; touch-action: none; }
         #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         video, canvas { position: absolute; max-width: 100%; max-height: 100%; object-fit: contain; }
         video { display: none; } 
-        canvas { transform: scaleX(1); } 
+        canvas { transform: scaleX(1); } /* 화면 공유 시에는 좌우 반전 불필요 */
         
-        /* 초소형 한 줄 UI 바 (우측 하단) */
         #ui-panel { 
             position: absolute; bottom: 20px; right: 20px; z-index: 10; 
-            background: rgba(0, 0, 0, 0.6); padding: 8px 15px; border-radius: 30px; 
-            border: 1px solid #444; display: flex; align-items: center; gap: 10px;
-            backdrop-filter: blur(4px); /* 반투명 블러 효과 */
+            background: rgba(0, 0, 0, 0.6); padding: 8px 12px; border-radius: 30px; 
+            border: 1px solid #444; display: flex; align-items: center; gap: 8px;
+            backdrop-filter: blur(4px);
         }
         
         label { font-size: 13px; font-weight: bold; color: #00FFFF; margin: 0; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
         input[type=number] { width: 45px; padding: 4px; font-size: 14px; text-align: center; background: #222; color: #fff; border: 1px solid #666; border-radius: 4px; }
 
         .action-btn { 
-            padding: 6px 12px; color: white; border: 1px solid #555; 
+            padding: 6px 10px; color: white; border: 1px solid #555; 
             border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
             background-color: #007bff; border-color: #0056b3; white-space: nowrap;
         }
         .action-btn:active { background-color: #0056b3; }
         #btnCaptureSnapshot { background-color: #444; border-color: #333; }
 
-        /* 제작자 텍스트 한 줄 통합 */
-        .creator-credit { font-size: 11px; color: #aaa; white-space: nowrap; font-weight: normal; margin-left: 5px;}
+        .creator-credit { font-size: 11px; color: #aaa; white-space: nowrap; font-weight: normal; margin-left: 2px;}
 
         #marker { display: none; position: absolute; border: 4px dashed #00FFFF; border-radius: 50%; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); box-sizing: border-box;}
         #marker::before { content: attr(data-label); position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px black; white-space: nowrap; }
@@ -43,18 +41,18 @@
         var isCvReady = false;
         function onOpenCvReady() {
             isCvReady = true;
-            if (typeof startStandardCamera === "function") startStandardCamera();
+            if (typeof startScreenCapture === "function") startScreenCapture();
         }
     </script>
     <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
 </head>
 <body>
 
-    <div id="loading">OpenCV 로딩 및 카메라 켜는 중...</div>
+    <div id="loading">OpenCV 로딩 및 화면 공유 준비 중...</div>
 
     <div id="ui-panel">
         <label>축(°): <input type="number" id="targetAngle" value="90" min="0" max="180"></label>
-        <button class="action-btn" id="btnCaptureSnapshot">스냅샷</button>
+        <button class="action-btn" id="btnCaptureSnapshot">화면 스냅샷</button>
         <button class="action-btn" id="btnAction" style="display: none; background-color: #28a745; border-color: #1e7e34;">각막 완료</button>
         <div class="creator-credit">대전이안과병원 신일환</div>
     </div>
@@ -87,71 +85,57 @@
         let corneaTrackingRadius = 100;
         let pupilTrackingRadius = 50;
 
-        let videoTrack = null;
-        let cameraCapabilities = null;
-        let currentHardwareZoom = 1.0;
-        let initialHardwareZoom = 1.0;
-        let snapshotHardwareZoom = 1.0; 
-
         let isDragging = false;
         let lastTouchX = null;
         let lastTouchY = null;
-        let initialPinchDistance = null;
-        let initialMarkerWidth = 0;
-        let lastMidpointX = null;
-        let lastMidpointY = null;
-
-        let isCameraStarted = false;
+        let isScreenShared = false;
 
         window.onload = () => {
-            if (isCvReady) startStandardCamera();
+            if (isCvReady) startScreenCapture();
         };
 
-        async function startStandardCamera() {
-            if (isCameraStarted) return; 
-            isCameraStarted = true;
+        // ★ 모바일 카메라 대신 PC 화면 공유(getDisplayMedia) 실행
+        async function startScreenCapture() {
+            if (isScreenShared) return; 
+            isScreenShared = true;
 
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, focusMode: 'continuous' }
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "never" } // 마우스 커서 캡처 제외 (지원하는 브라우저에 한함)
                 });
                 videoElement.srcObject = stream;
-                videoTrack = stream.getVideoTracks()[0];
                 
                 videoElement.onloadedmetadata = () => {
                     videoElement.play();
                     loading.style.display = 'none';
-                    setTimeout(() => {
-                        if (videoTrack && videoTrack.getCapabilities) {
-                            cameraCapabilities = videoTrack.getCapabilities();
-                            if (cameraCapabilities.zoom) {
-                                currentHardwareZoom = videoTrack.getSettings().zoom || cameraCapabilities.zoom.min;
-                            }
-                        }
-                    }, 800);
                     requestAnimationFrame(processVideo);
                 };
+
+                // 사용자가 공유를 중지했을 때의 처리
+                stream.getVideoTracks()[0].onended = () => {
+                    isScreenShared = false;
+                    alert("화면 공유가 종료되었습니다. 새로고침 해주세요.");
+                };
+
             } catch (err) {
-                isCameraStarted = false; 
-                loading.innerText = "카메라 권한을 허용해주세요.";
+                isScreenShared = false; 
+                loading.innerText = "권한이 거부되었습니다. 새로고침 후 화면을 선택해주세요.";
             }
         }
 
         btnCaptureSnapshot.addEventListener('click', () => {
             if (markingStep !== 0) {
-                // 초기화 로직
                 markingStep = 0;
                 if (markingSnapshot) { markingSnapshot.delete(); markingSnapshot = null; }
                 if (limbusTemplate) { limbusTemplate.delete(); limbusTemplate = null; }
                 trackedCenter = null;
-                btnCaptureSnapshot.textContent = "스냅샷";
+                btnCaptureSnapshot.textContent = "화면 스냅샷";
                 btnAction.style.display = 'none';
                 marker.style.display = 'none';
                 return; 
             }
             if (videoElement.videoWidth === 0) return;
             
-            snapshotHardwareZoom = currentHardwareZoom;
             const width = videoElement.videoWidth;
             const height = videoElement.videoHeight;
             const tempCanvas = document.createElement('canvas');
@@ -165,7 +149,7 @@
             
             marker.style.display = 'block';
             marker.style.borderColor = '#00FFFF';
-            marker.setAttribute('data-label', '각막(추적)');
+            marker.setAttribute('data-label', '각막(추적) 영역');
             marker.style.color = '#00FFFF';
             const initialDiameter = 200;
             markerRect = { x: (width - initialDiameter) / 2, y: (height - initialDiameter) / 2, width: initialDiameter, height: initialDiameter };
@@ -187,7 +171,7 @@
                 markerRect.y = corneaRect.y + corneaRect.height/2 - pD/2;
                 
                 marker.style.borderColor = '#FF00FF';
-                marker.setAttribute('data-label', '동공(중심)');
+                marker.setAttribute('data-label', '동공(중심) 영역');
                 marker.style.color = '#FF00FF';
                 updateMarkerUI();
                 
@@ -220,81 +204,61 @@
             }
         });
 
-        function handleInteraction(e) {
-            e.preventDefault(); 
+        // ★ 마우스 이벤트 로직 (드래그로 이동)
+        function handleMouseInteraction(e) {
+            if (markingStep !== 1 && markingStep !== 2) return;
+            
             const canvasRect = canvasElement.getBoundingClientRect();
             const scaleX = videoElement.videoWidth / canvasRect.width;
             const scaleY = videoElement.videoHeight / canvasRect.height;
-            
-            if (markingStep === 0 || markingStep === 3) {
-                if (e.type === 'touchstart' && e.touches && e.touches.length === 2) {
-                    const t1 = e.touches[0], t2 = e.touches[1];
-                    initialPinchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-                    initialHardwareZoom = currentHardwareZoom;
-                } else if (e.type === 'touchmove' && e.touches && e.touches.length === 2) {
-                    if (initialPinchDistance && cameraCapabilities && cameraCapabilities.zoom && videoTrack) {
-                        const t1 = e.touches[0], t2 = e.touches[1];
-                        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-                        let nZ = Math.max(cameraCapabilities.zoom.min, Math.min(initialHardwareZoom * (dist/initialPinchDistance), cameraCapabilities.zoom.max));
-                        videoTrack.applyConstraints({ advanced: [{ zoom: nZ }] }).then(() => { currentHardwareZoom = nZ; });
-                    }
-                } else if (e.type === 'touchend' || e.type === 'touchcancel') {
-                    initialPinchDistance = null;
-                }
-                return;
-            }
 
-            if (markingStep === 1 || markingStep === 2) {
-                if (e.type === 'touchstart' || e.type === 'mousedown') {
-                    if (e.touches && e.touches.length === 2) {
-                        isDragging = false;
-                        const t1 = e.touches[0], t2 = e.touches[1];
-                        initialPinchDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-                        initialMarkerWidth = markerRect.width;
-                        lastMidpointX = (t1.clientX + t2.clientX) / 2;
-                        lastMidpointY = (t1.clientY + t2.clientY) / 2;
-                    } else {
-                        isDragging = true;
-                        lastTouchX = e.touches ? e.touches[0].clientX : e.clientX;
-                        lastTouchY = e.touches ? e.touches[0].clientY : e.clientY;
-                    }
-                } else if (e.type === 'touchmove' || e.type === 'mousemove') {
-                    if (e.touches && e.touches.length === 2) {
-                        const t1 = e.touches[0], t2 = e.touches[1];
-                        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-                        const midX = (t1.clientX + t2.clientX) / 2, midY = (t1.clientY + t2.clientY) / 2;
-                        if (initialPinchDistance && lastMidpointX !== null) {
-                            let nW = Math.max(20, Math.min(initialMarkerWidth * (dist/initialPinchDistance), 600));
-                            const dx = (midX - lastMidpointX) * scaleX, dy = (midY - lastMidpointY) * scaleY;
-                            const cX = markerRect.x + markerRect.width / 2 + dx, cY = markerRect.y + markerRect.height / 2 + dy;
-                            markerRect.width = markerRect.height = nW;
-                            markerRect.x = cX - nW/2; markerRect.y = cY - nW/2;
-                            updateMarkerUI();
-                        }
-                        lastMidpointX = midX; lastMidpointY = midY;
-                    } else if (isDragging) {
-                        const curX = e.touches ? e.touches[0].clientX : e.clientX;
-                        const curY = e.touches ? e.touches[0].clientY : e.clientY;
-                        if (lastTouchX !== null) {
-                            markerRect.x += (curX - lastTouchX) * scaleX;
-                            markerRect.y += (curY - lastTouchY) * scaleY;
-                            updateMarkerUI();
-                        }
-                        lastTouchX = curX; lastTouchY = curY;
-                    }
-                } else if (e.type === 'touchend' || e.type === 'mouseup') {
-                    isDragging = false;
-                    initialPinchDistance = lastTouchX = lastMidpointX = null;
+            if (e.type === 'mousedown') {
+                isDragging = true;
+                lastTouchX = e.clientX;
+                lastTouchY = e.clientY;
+            } else if (e.type === 'mousemove' && isDragging) {
+                if (lastTouchX !== null && lastTouchY !== null) {
+                    markerRect.x += (e.clientX - lastTouchX) * scaleX;
+                    markerRect.y += (e.clientY - lastTouchY) * scaleY;
+                    updateMarkerUI();
                 }
+                lastTouchX = e.clientX;
+                lastTouchY = e.clientY;
+            } else if (e.type === 'mouseup' || e.type === 'mouseleave') {
+                isDragging = false;
+                lastTouchX = null;
+                lastTouchY = null;
             }
         }
 
-        canvasElement.addEventListener('touchstart', handleInteraction, {passive: false});
-        canvasElement.addEventListener('touchmove', handleInteraction, {passive: false});
-        canvasElement.addEventListener('touchend', handleInteraction);
-        canvasElement.addEventListener('mousedown', handleInteraction);
-        canvasElement.addEventListener('mousemove', handleInteraction);
-        canvasElement.addEventListener('mouseup', handleInteraction);
+        // ★ 마우스 휠 로직 (휠 굴려서 크기 확대/축소)
+        canvasElement.addEventListener('wheel', (e) => {
+            if (markingStep !== 1 && markingStep !== 2) return;
+            e.preventDefault(); // 웹페이지 자체 스크롤 방지
+            
+            // 휠을 위로 올리면 커지고, 아래로 내리면 작아짐 (배율 1.05배씩)
+            const scaleFactor = e.deltaY < 0 ? 1.05 : 0.95; 
+            let newWidth = markerRect.width * scaleFactor;
+            
+            // 최소 20px, 최대 800px로 제한
+            newWidth = Math.max(20, Math.min(newWidth, 800)); 
+            
+            // 중심점을 유지하며 크기 변경
+            const centerX = markerRect.x + markerRect.width / 2;
+            const centerY = markerRect.y + markerRect.height / 2;
+            
+            markerRect.width = newWidth;
+            markerRect.height = newWidth;
+            markerRect.x = centerX - newWidth / 2;
+            markerRect.y = centerY - newWidth / 2;
+            
+            updateMarkerUI();
+        }, { passive: false });
+
+        canvasElement.addEventListener('mousedown', handleMouseInteraction);
+        canvasElement.addEventListener('mousemove', handleMouseInteraction);
+        canvasElement.addEventListener('mouseup', handleMouseInteraction);
+        canvasElement.addEventListener('mouseleave', handleMouseInteraction);
 
         function updateMarkerUI() {
             const canvasRect = canvasElement.getBoundingClientRect();
@@ -321,31 +285,19 @@
             if (markingStep === 3 && limbusTemplate != null) {
                 canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
                 const imgData = canvasCtx.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                let src = null, srcGray = null, dst = null, mask = null, activeTemplate = null; 
+                let src = null, srcGray = null, dst = null, mask = null; 
                 try {
                     src = cv.matFromImageData(imgData);
                     srcGray = new cv.Mat();
                     cv.cvtColor(src, srcGray, cv.COLOR_RGBA2GRAY, 0);
                     
-                    let zoomScale = currentHardwareZoom / snapshotHardwareZoom;
-                    let scaledW = Math.max(10, Math.round(limbusTemplate.cols * zoomScale));
-                    let scaledH = Math.max(10, Math.round(limbusTemplate.rows * zoomScale));
-                    
-                    if (scaledW < srcGray.cols && scaledH < srcGray.rows) {
-                        activeTemplate = new cv.Mat();
-                        if (zoomScale !== 1.0) {
-                            cv.resize(limbusTemplate, activeTemplate, new cv.Size(scaledW, scaledH), 0, 0, cv.INTER_LINEAR);
-                        } else {
-                            limbusTemplate.copyTo(activeTemplate);
-                        }
-
+                    if (srcGray.cols >= limbusTemplate.cols && srcGray.rows >= limbusTemplate.rows) {
                         dst = new cv.Mat(); mask = new cv.Mat(); 
-                        cv.matchTemplate(srcGray, activeTemplate, dst, cv.TM_CCORR_NORMED, mask);
+                        cv.matchTemplate(srcGray, limbusTemplate, dst, cv.TM_CCORR_NORMED, mask);
                         let result = cv.minMaxLoc(dst);
                         
-                        if (result.maxVal > 0.75) {
-                            let currentCorneaRadius = corneaTrackingRadius * zoomScale;
-                            trackedCenter = new cv.Point(result.maxLoc.x + currentCorneaRadius, result.maxLoc.y + currentCorneaRadius);
+                        if (result.maxVal > 0.82) {
+                            trackedCenter = new cv.Point(result.maxLoc.x + corneaTrackingRadius, result.maxLoc.y + corneaTrackingRadius);
                         }
                     }
                 } catch (err) { 
@@ -354,7 +306,6 @@
                 finally { 
                     if (src) src.delete(); if (srcGray) srcGray.delete(); 
                     if (dst) dst.delete(); if (mask) mask.delete(); 
-                    if (activeTemplate) activeTemplate.delete();
                 }
             } else if ((markingStep === 1 || markingStep === 2) && markingSnapshot) {
                 const tempCanvas = document.createElement('canvas');
@@ -373,28 +324,22 @@
             }
 
             if (markingStep === 3 && trackedCenter) {
-                let zoomScale = currentHardwareZoom / snapshotHardwareZoom;
-                let currentCorneaRadius = corneaTrackingRadius * zoomScale;
-                let currentPupilRadius = pupilTrackingRadius * zoomScale;
-                let currentOffsetX = centerOffset.dx * zoomScale;
-                let currentOffsetY = centerOffset.dy * zoomScale;
-
                 const cCx = trackedCenter.x, cCy = trackedCenter.y;
-                const pCx = cCx + currentOffsetX, pCy = cCy + currentOffsetY;
+                const pCx = cCx + centerOffset.dx, pCy = cCy + centerOffset.dy;
                 
                 canvasCtx.beginPath();
-                canvasCtx.arc(cCx, cCy, currentCorneaRadius, 0, 2 * Math.PI);
+                canvasCtx.arc(cCx, cCy, corneaTrackingRadius, 0, 2 * Math.PI);
                 canvasCtx.strokeStyle = '#00FF00'; canvasCtx.lineWidth = 2; canvasCtx.stroke();
                 
                 canvasCtx.beginPath();
-                canvasCtx.arc(pCx, pCy, currentPupilRadius, 0, 2 * Math.PI);
+                canvasCtx.arc(pCx, pCy, pupilTrackingRadius, 0, 2 * Math.PI);
                 canvasCtx.strokeStyle = '#FF00FF'; canvasCtx.lineWidth = 2; canvasCtx.stroke();
                 
                 canvasCtx.beginPath();
                 canvasCtx.arc(pCx, pCy, 3, 0, 2 * Math.PI);
                 canvasCtx.fillStyle = '#FF0000'; canvasCtx.fill();
                 
-                const len = currentCorneaRadius + (150 * zoomScale);
+                const len = corneaTrackingRadius + 150;
                 
                 canvasCtx.beginPath();
                 canvasCtx.moveTo(pCx - len, pCy); canvasCtx.lineTo(pCx + len, pCy);
